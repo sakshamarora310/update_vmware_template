@@ -1,7 +1,8 @@
 # Ansible Role: VMware Content Library Template Auto-Updater
 
-This Ansible role automates the full lifecycle of updating VMware Content Library templates.
+This Ansible role automates the full lifecycle of updating VMware Content Library templates for RHEL9
 It is designed for Platform/Cloud/VMware engineers who want hands-off image management with reliability, repeatability, and minimal manual intervention.
+This ansible playbook is to update Linux (RHEL/ CentOS/ Oracle Linux) Templates
 
 ## 🚀 Features
 
