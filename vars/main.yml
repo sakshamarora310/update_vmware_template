@@ -1,0 +1,11 @@
+---
+# vars file for update_template
+
+vm_name: "rhel-update" #Temporary VM name cloned from content library which will be updated and uploaded
+datacenter: "datacenter" #vCenter Datacenter
+datastore: "datastore" #vCenter Datastore
+vm_template: "rhelTemplate" #Content Library Linux Template 
+contlib_name: "contentLibrary" #Name of the content library
+templateResult: "has encountered an error" #Default Error
+template_folder: "/datacenter/vm/Templates" #Templates folder, value retrived from govc, "govc folder.info Templates"
+

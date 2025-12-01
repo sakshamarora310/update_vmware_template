@@ -1,0 +1,72 @@
+# Post Update
+# Author: Saksham Arora
+# Clones VM as Template, pushes it back to Content library, and does clean up
+#
+
+    - name: "Clone VM as Template"
+      vmware.vmware.folder_template_from_vm:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        datacenter: "{{ datacenter }}"
+        vm_name: "{{ vm_name }}"
+        template_name: "{{ vm_template }}"
+        template_folder: "{{ template_folder }}"
+
+    - name: "Push Template to Content Library"
+      environment:
+        GOVC_INSECURE: 1
+        GOVC_URL: "https://{{ vcenter_hostname }}"
+        GOVC_USERNAME: "{{ vcenter_username }}"
+        GOVC_PASSWORD: "{{ vcenter_password }}"
+      ansible.builtin.command: "govc library.clone -ovf -vm {{ vm_template }} {{ contlib_name }} rhel9template" #Check help if confused
+
+    
+    - name: "Remove the update VM"
+      community.vmware.vmware_guest:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        name: "{{ vm_name }}"
+        state: absent
+
+    - name: "Gather info about Library Item in {{ contlib_name }}"
+      vmware.vmware.content_library_item_info:
+        hostname: '{{ vcenter_hostname }}'
+        username: '{{ vcenter_username }}'
+        password: '{{ vcenter_password }}'
+        library_name: "{{ contlib_name }}"
+      register: libraryDetails
+
+    - name: "Set fact for {{ vm_template }}-old template"
+      ansible.builtin.set_fact:
+        old_libraryItemId: "{{ item.id }}"
+      when: "item.name == '{{ vm_template }}-old'"
+      loop: "{{ libraryDetails.library_item_info }}"
+      no_log: true
+
+
+    - name: "Generate a vmware session Id"
+      ansible.builtin.uri:
+        url: "https://{{ vcenter_hostname }}/api/session"
+        url_username: "{{ vcenter_username }}"
+        url_password: "{{ vcenter_password }}"
+        method: POST
+        force_basic_auth: true
+        status_code: 201
+      register: vmware_session
+    
+    
+    - name: "Remove the old template from content library"
+      ansible.builtin.uri:
+        url: "https://{{ vcenter_hostname }}/api/content/library/item/{{ old_libraryItemId }}"
+        method: DELETE 
+        status_code: 204
+        headers:
+          Content-Type: "application/json"
+          vmware-api-session-id: "{{ vmware_session.vmware_api_session_id }}"
+      ignore_errors: true
+
+    - name: "Set Completed Fact"
+      ansible.builtin.set_fact:
+        templateResult: 'has completed successfully'

@@ -1,0 +1,88 @@
+# Called before the main update tasks
+# Author: Saksham Arora
+# Gathers Cluster Information, Checks for stale content library item, removes it and Clones VM from Content Library, Assigns it an IP
+# Futher enhancements: Dynamically retrive datacenter information and use it to make it more dynamic
+
+    - name: "Gather Cluster Information from DC" #Predefined CLUSTER variable is not working with all DCs - s4arora
+      vmware.vmware.cluster_info:
+        hostname: '{{ vcenter_hostname }}'
+        username: '{{ vcenter_username }}'
+        password: '{{ vcenter_password }}'
+        datacenter: "{{ datacenter }}"
+      register: clusterInfo
+    
+    - name: Set Cluster Fact # Not using already defined CLUSTER fact since it fails for BEN and BUN
+      ansible.builtin.set_fact:
+        cluster: "{{ clusterInfo.clusters.keys()| list| first }}"
+
+    - name: "Gather info about all Library Item in {{ contlib_name }}"
+      vmware.vmware.content_library_item_info:
+        hostname: '{{ vcenter_hostname }}'
+        username: '{{ vcenter_username }}'
+        password: '{{ vcenter_password }}'
+        library_name: "{{ contlib_name }}"
+      register: libraryDetails
+    
+    - name: "Set fact if old library item exist"
+      ansible.builtin.set_fact:
+        stale_libraryItemId: "{{ item.id }}"
+      when: "item.name == '{{ vm_template }}-old'"
+      loop: "{{ libraryDetails.library_item_info }}"
+      no_log: true
+
+
+    - name: "Generate a vmware session Id"
+      ansible.builtin.uri:
+        url: "https://{{ vcenter_hostname }}/api/session"
+        url_username: "{{ vcenter_username }}"
+        url_password: "{{ vcenter_password }}"
+        method: POST
+        force_basic_auth: true
+        status_code: 201
+      register: vmware_session
+    
+    
+    - name: "Delete existing/ stale old template"
+      ansible.builtin.uri:
+        url: "https://{{ vcenter_hostname }}/api/content/library/item/{{ stale_libraryItemId }}"
+        method: DELETE 
+        status_code: 204
+        headers:
+          Content-Type: "application/json"
+          vmware-api-session-id: "{{ vmware_session.vmware_api_session_id }}"
+      ignore_errors: true
+      when: "stale_libraryItemId"
+
+      
+    - name: Clone Template from Content Library
+      vmware.vmware.deploy_content_library_ovf:
+        hostname: "{{ vcenter_hostname }}"
+        username: '{{ vcenter_username }}'
+        password: '{{ vcenter_password }}'
+        library_item_name: "{{ vm_template }}"
+        library_name: "{{ contlib_name }}"
+        vm_name: "{{ vm_name }}"
+        datacenter: "{{ datacenter }}"
+        datastore: "{{ datastore }}"
+        cluster: "{{ cluster }}" 
+    
+    - name: "Configure IP to the VM"
+      community.vmware.vmware_guest:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        name: "{{ vm_name }}"
+        datacenter: "{{ datacenter }}"
+        networks:
+          - vlan: "Network name on vCenter"
+            ip: "10.10.10.1"
+            netmask: "255.255.255.0"
+            gateway: "10.10.10.250"
+            type: static
+            connected: true
+        customization:
+          hostname: "rheltemplate" #Keeping the hostname same, as vm, rhel-update (vm_name variable in vars/main.yml) is temporary and the VM will be removed post update
+          existing_vm: true
+          dns_servers:
+            - 8.8.8.8
+            - 8.8.4.4

@@ -1,0 +1,103 @@
+# Update Tasks
+# Author: Saksham Arora
+# Renames the existing content library template and updates the clone
+#
+
+- name: Get Library Item ID # We need the ID for patch request to change template name
+  vmware.vmware.content_library_item_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: '{{ vcenter_username }}'
+    password: '{{ vcenter_password }}'
+    library_name: "{{ contlib_name }}"
+  register: libraryDetails
+
+- name: Debug
+  ansible.builtin.debug:
+    msg: "{{ libraryDetails.library_item_info }}"
+
+- name: Set fact
+  ansible.builtin.set_fact:
+    libraryItemId: "{{ item.id }}"
+  when: "item.name == '{{ vm_template }}'"
+  loop: "{{ libraryDetails.library_item_info }}"
+  no_log: true
+
+
+- name: "Generate a vmware session Id"
+  ansible.builtin.uri:
+    url: "https://{{ vcenter_hostname }}/api/session"
+    url_username: "{{ vcenter_username }}"
+    url_password: "{{ vcenter_password }}"
+    method: POST
+    force_basic_auth: true
+    status_code: 201
+  register: vmware_session
+
+
+- name: "Rename the current {{ vm_template }} template to {{ vm_template }}-old"
+  ansible.builtin.uri:
+    url: "https://{{ vcenter_hostname }}/api/content/library/item/{{ libraryItemId }}"
+    body: "{ \"name\":\"{{ vm_template }}-old\"}"
+    body_format: "json"
+    method: PATCH
+    status_code: 204
+    headers:
+      Content-Type: "application/json"
+      vmware-api-session-id: "{{ vmware_session.vmware_api_session_id }}"
+  ignore_errors: true
+
+
+- name: "Poweron the cloned vm"
+  vmware.vmware.vm_powerstate:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    datacenter: "{{ datacenter }}"
+    name: "{{ vm_name }}"
+    state: "powered-on"
+
+
+- name: "Wait for machine to come back online"
+  ansible.builtin.wait_for_connection:
+    delay: 30
+    timeout: 300
+
+
+- name: "Running DNF Update on the cloned VM"
+  ansible.builtin.dnf:
+    name: 'httpd'
+    state: latest
+    update_only: true
+  delegate_to: "rheltemplate" #This is the update VM and not the template in Content Library 
+  vars:
+    ansible_connection: ssh
+    ansible_python_interpreter: /usr/bin/python
+
+- name: "Restart vm to apply changes"
+  vmware.vmware.vm_powerstate:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    datacenter: "{{ datacenter }}"
+    name: "{{ vm_name }}"
+    state: restarted
+
+
+- name: Wait for machine to come back online
+  ansible.builtin.wait_for_connection:
+    delay: 30
+    timeout: 300
+
+- name: "Power Off the VM"
+  vmware.vmware.vm_powerstate:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    datacenter: "{{ datacenter }}"
+    name: "{{ vm_name }}"
+    state: powered-off
+
+
+- name: Wait for machine to shutdown
+  ansible.builtin.pause:
+    seconds: 20 

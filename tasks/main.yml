@@ -1,0 +1,26 @@
+---
+# tasks file for update_vmware_template
+#
+  
+  - name: "Run the block"
+    block:
+      - name: "Run Pre Update Checks"
+        ansible.builtin.include_tasks: 
+          file: pre_update.yml
+    
+      - name: "Run Updates"
+        ansible.builtin.include_tasks: 
+          file: update_tasks.yml
+      
+      - name: "Run Post Update Tasks"
+        ansible.builtin.include_tasks:
+          file: post_update.yml
+
+    rescue:
+      - name: "Rollback Changes"
+        ansible.builtin.include_tasks:
+          file: "rollback.yml"
+  
+    always:
+      - name: Email Admins
+        ansible.builtin.shell: "echo 'Template updation playbook {{ templateResult }}' | mailx -s 'Template Update Playbook' someone@somewhere.com"

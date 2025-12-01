@@ -1,0 +1,3 @@
+vcenter_hostname: "vc.example.com.au"
+vcenter_username: "admin@vsphere.local"
+vcenter_password: "MySuperSecurePassword"

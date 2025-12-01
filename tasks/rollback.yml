@@ -1,0 +1,64 @@
+# Rollback Update YML
+# Author: Saksham Arora
+# Shutdowns VM, Get Library ID and Renames the old content library
+# All will be ignoring errors, since this is a general rollback for all block tasks
+
+        - name: Failure whilst updating the template (Rollback)
+          ansible.builtin.debug:
+            msg: "Failure Occured Whilst Running the Updates, Rolling back Changes"
+
+
+        - name: Shutdown Machine
+          vmware.vmware.vm_powerstate:
+            hostname: "{{ vcenter_hostname }}"
+            username: "{{ vcenter_username }}"
+            password: "{{ vcenter_password }}"
+            datacenter: "{{ datacenter }}"
+            name: "{{ vm_name }}"
+            state: powered-off
+          ignore_errors: true
+
+        - name: Get Library Item ID # We need the ID for "patch" request to change template name
+          vmware.vmware.content_library_item_info:
+            hostname: "{{ vcenter_hostname }}"
+            username: '{{ vcenter_username }}'
+            password: '{{ vcenter_password }}'
+            library_name: "{{ contlib_name }}"
+          register: libraryDetails
+
+        - name: Set fact
+          ansible.builtin.set_fact:
+            libraryItemId: "{{ item.id }}"
+          when: "item.name == '{{ vm_template }}-old'"
+          loop: "{{ libraryDetails.library_item_info }}"
+          no_log: true
+          ignore_errors: true
+
+
+        - name: "Generate a vmware session Id"
+          ansible.builtin.uri:
+            url: "https://{{ vcenter_hostname }}/api/session"
+            url_username: "{{ vcenter_username }}"
+            url_password: "{{ vcenter_password }}"
+            method: POST
+            force_basic_auth: true
+            status_code: 201
+          register: vmware_session
+
+
+        - name: "Rename the current template"
+          ansible.builtin.uri:
+            url: "https://{{ vcenter_hostname }}/api/content/library/item/{{ libraryItemId }}"
+            body: "{ \"name\":\"{{ vm_template }}\"}"
+            body_format: "json"
+            method: PATCH
+            status_code: 204
+            headers:
+              Content-Type: "application/json"
+              vmware-api-session-id: "{{ vmware_session.vmware_api_session_id }}"
+          ignore_errors: true
+
+        - name: Set Failed Fact
+          ansible.builtin.set_fact:
+            templateResult: 'has failed. Please double check {{ contlib_name }} content library, and make sure {{ vm_template }} exists. '
+
